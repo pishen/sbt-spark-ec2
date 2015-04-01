@@ -8,26 +8,41 @@
 * In your sbt project, create `project/plugins.sbt`:
 
 ```
-addSbtPlugin("net.pishen" %% "sbt-spark-ec2" % "0.3.0")
+addSbtPlugin("net.pishen" %% "sbt-spark-ec2" % "0.4.0")
 ```
 
-* Create `spark-conf.json` with content (below is an example):
+* Create `spark-conf.json`:
 
 ```
 {
-  "clusterName": "pishen-spark",
-  "keyPair": "pishen",
-  "pemFile": "/home/pishen/.ssh/pishen.pem",
+  "cluster-name": "pishen-spark",
+  "keypair": "pishen",
+  "pem": "/home/pishen/.ssh/pishen.pem",
+  "region": "us-west-2",
+  "master-type": "m3.medium",
+  "slave-type": "m3.medium",
+  "num-of-slaves": 1,
+  "main-class": "core.Main"
+}
+```
+
+* Below is a more complex example of `spark-conf.json`:
+```
+{
+  "cluster-name": "pishen-spark",
+  "keypair": "pishen",
+  "pem": "/home/pishen/.ssh/pishen.pem",
   "region": "us-west-2",
   "zone": "us-west-2b",
-  "masterType": "m3.medium",
-  "slaveType": "m3.medium",
-  "numOfSlave": 1,
-  "mainClass": "core.Main",
-  "sparkVersion": "1.3.0",
-  "executorMemory": "1G",
-  "vpcId": "vpc-xxxxxxxx",
-  "subnetId": "subnet-xxxxxxxx"
+  "master-type": "m3.medium",
+  "slave-type": "m3.medium",
+  "num-of-slaves": 1,
+  "main-class": "core.Main",
+  "spark-version": "1.3.0",
+  "executor-memory": "1G",
+  "vpc-id": "vpc-xxxxxxxx",
+  "subnet-id": "subnet-xxxxxxxx",
+  "use-private-ips": true
 }
 ```
 
@@ -37,7 +52,8 @@ addSbtPlugin("net.pishen" %% "sbt-spark-ec2" % "0.3.0")
 
 ## All available commands
 * `sbt sparkConf`
-* `sbt sparkRunSparkEc2`
+* `sbt sparkEc2Dir`
+* `sbt sparkEc2Run`
 * `sbt sparkLaunchCluster`
 * `sbt sparkDestroyCluster`
 * `sbt sparkStartCluster`
