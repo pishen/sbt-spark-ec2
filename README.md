@@ -1,4 +1,5 @@
 # sbt-spark-ec2
+* A wrapper of [spark-ec2](http://spark.apache.org/docs/latest/ec2-scripts.html) that can be plugged into sbt and let sbt deploy spark cluster and run spark jobs easily on Amazon EC2.
 * Currently supports Spark 1.3.0
 
 ## How to use this plugin
@@ -7,7 +8,7 @@
 * In your sbt project, create `project/plugins.sbt`:
 
 ```
-addSbtPlugin("net.pishen" %% "sbt-spark-ec2" % "0.2.0")
+addSbtPlugin("net.pishen" %% "sbt-spark-ec2" % "0.3.0")
 ```
 
 * Create `spark-conf.json` with content (below is an example):
@@ -35,6 +36,7 @@ addSbtPlugin("net.pishen" %% "sbt-spark-ec2" % "0.2.0")
 * Once launched, submit your job by `sbt sparkSubmitJob <args>`
 
 ## All available commands
+* `sbt sparkConf`
 * `sbt sparkRunSparkEc2`
 * `sbt sparkLaunchCluster`
 * `sbt sparkDestroyCluster`
