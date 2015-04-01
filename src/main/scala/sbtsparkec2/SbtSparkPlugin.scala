@@ -27,7 +27,8 @@ object SbtSparkPlugin extends AutoPlugin {
 
   object autoImport {
     lazy val sparkConf = settingKey[SparkConf]("Parse the configuration.")
-    lazy val sparkRunSparkEc2 = inputKey[Unit]("Run spark-ec2")
+    lazy val sparkEc2Dir = settingKey[File]("ec2 directory")
+    lazy val sparkEc2Run = inputKey[Unit]("Run spark-ec2")
 
     lazy val sparkLaunchCluster = taskKey[Unit]("Launch new Spark cluster.")
     lazy val sparkDestroyCluster = taskKey[Unit]("Destroy existed Spark cluster.")
@@ -47,28 +48,25 @@ object SbtSparkPlugin extends AutoPlugin {
 
   case class SparkConf(
     clusterName: String,
-    keyPair: String,
-    pemFile: String,
+    keypair: String,
+    pem: String,
     region: String,
     zone: Option[String],
     masterType: String,
     slaveType: String,
-    numOfSlave: Int,
+    numOfSlaves: Int,
     mainClass: String,
     sparkVersion: Option[String],
     driverMemory: Option[String],
     executorMemory: Option[String],
     vpcId: Option[String],
-    subnetId: Option[String])
+    subnetId: Option[String],
+    usePrivateIpsRaw: Option[Boolean]) {
+    val usePrivateIps = if (usePrivateIpsRaw.getOrElse(false)) Some("--private-ips") else None
+  }
 
   def runSparkEc2(args: Seq[String], targetDir: File) = {
     val ec2Dir = targetDir / "ec2"
-
-    if (!ec2Dir.exists) {
-      val gzFile = targetDir / "ec2.tar.gz"
-      Files.copy(getClass.getResourceAsStream("/ec2.tar.gz"), gzFile.toPath, StandardCopyOption.REPLACE_EXISTING)
-      Seq("tar", "-zxf", gzFile.getAbsolutePath, "--directory", gzFile.getParent).!
-    }
 
     val cmd = Seq(ec2Dir.getAbsolutePath + "/spark-ec2") ++ args
     println(cmd.mkString(" "))
@@ -76,54 +74,66 @@ object SbtSparkPlugin extends AutoPlugin {
     if (res != 0) sys.error("spark-ec2 return " + res) else res
   }
 
-  def masterAddressOpt(clusterName: String) = getInstanceAddresses(clusterName + "-master").headOption
+  def masterAddressOpt(conf: SparkConf) = getInstanceAddresses("-master", conf).headOption
 
-  def slaveAddresses(clusterName: String) = getInstanceAddresses(clusterName + "-slaves")
+  def slaveAddresses(conf: SparkConf) = getInstanceAddresses("-slaves", conf)
 
-  def getInstanceAddresses(groupName: String) = {
+  def getInstanceAddresses(clusterNamePostfix: String, conf: SparkConf) = {
     val jsonStr = Seq("aws", "ec2", "describe-instances").!!
     val json = Json.parse(jsonStr)
     (json \\ "Instances").flatMap(_.as[Seq[JsObject]])
-      .filter(j => (j \ "SecurityGroups" \\ "GroupName").flatMap(_.asOpt[String]).contains(groupName))
-      .flatMap(j => (j \ "PrivateIpAddress").asOpt[String])
+      .filter(j => (j \ "SecurityGroups" \\ "GroupName").flatMap(_.asOpt[String]).contains(conf.clusterName + clusterNamePostfix))
+      .flatMap {
+        j =>
+          if (conf.usePrivateIpsRaw.getOrElse(false)) (j \ "PrivateIpAddress").asOpt[String] else (j \ "PublicIpAddress").asOpt[String]
+      }
   }
 
   override lazy val projectSettings = Seq(
     sparkConf := {
       val json = Json.parse(Source.fromFile(baseDirectory.value / "spark-conf.json").mkString)
 
-      val pemFile = new File((json \ "pemFile").as[String])
+      val pemFile = new File((json \ "pem").as[String])
       assert(pemFile.exists(), "I can't find your pem file at " + pemFile.getAbsolutePath)
 
       SparkConf(
-        (json \ "clusterName").as[String],
-        (json \ "keyPair").as[String],
+        (json \ "cluster-name").as[String],
+        (json \ "keypair").as[String],
         pemFile.getAbsolutePath,
         (json \ "region").as[String],
         (json \ "zone").asOpt[String],
-        (json \ "masterType").as[String],
-        (json \ "slaveType").as[String],
-        (json \ "numOfSlave").as[Int],
-        (json \ "mainClass").as[String],
-        (json \ "sparkVersion").asOpt[String],
-        (json \ "driverMemory").asOpt[String],
-        (json \ "executorMemory").asOpt[String],
-        (json \ "vpcId").asOpt[String],
-        (json \ "subnetId").asOpt[String])
+        (json \ "master-type").as[String],
+        (json \ "slave-type").as[String],
+        (json \ "num-of-slaves").as[Int],
+        (json \ "main-class").as[String],
+        (json \ "spark-version").asOpt[String],
+        (json \ "driver-memory").asOpt[String],
+        (json \ "executor-memory").asOpt[String],
+        (json \ "vpc-id").asOpt[String],
+        (json \ "subnet-id").asOpt[String],
+        (json \ "use-private-ips").asOpt[Boolean])
     },
-    sparkRunSparkEc2 := {
+    sparkEc2Dir := {
+      val ec2Dir = target.value / "ec2"
+      IO.delete(ec2Dir)
+      val gzFile = target.value / "ec2.tar.gz"
+      Files.copy(getClass.getResourceAsStream("/ec2.tar.gz"), gzFile.toPath, StandardCopyOption.REPLACE_EXISTING)
+      Seq("tar", "-zxf", gzFile.getAbsolutePath, "--directory", gzFile.getParent).!
+      ec2Dir
+    },
+    sparkEc2Run := {
       runSparkEc2(spaceDelimited().parsed, target.value)
     },
     sparkLaunchCluster := {
       val conf = sparkConf.value
 
       val base = Seq(
-        "-k", conf.keyPair,
-        "-i", conf.pemFile,
+        "-k", conf.keypair,
+        "-i", conf.pem,
         "-r", conf.region,
         "-m", conf.masterType,
         "-t", conf.slaveType,
-        "-s", conf.numOfSlave.toString(),
+        "-s", conf.numOfSlaves.toString(),
         "--copy-aws-credentials")
 
       val optional = Seq(
@@ -132,43 +142,43 @@ object SbtSparkPlugin extends AutoPlugin {
         conf.vpcId.map(id => Seq("--vpc-id=" + id)),
         conf.subnetId.map(id => Seq("--subnet-id=" + id))).flatten.flatten
 
-      runSparkEc2(base ++ optional ++ Seq("launch", conf.clusterName), target.value)
+      runSparkEc2(base ++ optional ++ conf.usePrivateIps ++ Seq("launch", conf.clusterName), target.value)
     },
     sparkDestroyCluster := {
       val conf = sparkConf.value
 
       runSparkEc2(Seq(
         "-r", conf.region,
-        "destroy", conf.clusterName), target.value)
+        "destroy", conf.clusterName) ++ conf.usePrivateIps, target.value)
     },
     sparkStartCluster := {
       val conf = sparkConf.value
 
       runSparkEc2(Seq(
-        "-i", conf.pemFile,
+        "-i", conf.pem,
         "-r", conf.region,
         "--copy-aws-credentials",
-        "start", conf.clusterName), target.value)
+        "start", conf.clusterName) ++ conf.usePrivateIps, target.value)
     },
     sparkStopCluster := {
       val conf = sparkConf.value
 
       runSparkEc2(Seq(
         "-r", conf.region,
-        "stop", conf.clusterName), target.value)
+        "stop", conf.clusterName) ++ conf.usePrivateIps, target.value)
     },
     sparkShowMachines := {
       val conf = sparkConf.value
 
-      masterAddressOpt(conf.clusterName) match {
+      masterAddressOpt(conf) match {
         case None => println("\u001B[31mno master found.\u001B[0m")
         case Some(masterAddress) =>
           println("\u001B[36mmaster\u001B[0m " + masterAddress)
-          println("command to login: ssh -i " + conf.pemFile + " root@" + masterAddress)
+          println("command to login: ssh -i " + conf.pem + " root@" + masterAddress)
           println("web console: http://" + masterAddress + ":8080")
       }
 
-      val slaveMessages = slaveAddresses(conf.clusterName).map("\u001B[32mslave\u001B[0m " + _)
+      val slaveMessages = slaveAddresses(conf).map("\u001B[32mslave\u001B[0m " + _)
       if (slaveMessages.isEmpty) {
         println("\u001B[31mno slave found.\u001B[0m")
       } else {
@@ -178,11 +188,11 @@ object SbtSparkPlugin extends AutoPlugin {
     sparkLoginMaster := {
       val conf = sparkConf.value
 
-      masterAddressOpt(conf.clusterName) match {
+      masterAddressOpt(conf) match {
         case None =>
           println("\u001B[31mno master found.\u001B[0m")
         case Some(masterAddress) =>
-          Seq("ssh", "-tt", "-o", "StrictHostKeyChecking=no", "-i", conf.pemFile, s"root@$masterAddress").!<
+          Seq("ssh", "-tt", "-o", "StrictHostKeyChecking=no", "-i", conf.pem, s"root@$masterAddress").!<
       }
     },
     sparkShowSpaceUsage := {
@@ -190,7 +200,7 @@ object SbtSparkPlugin extends AutoPlugin {
 
       def getSpaceUsage(address: String) = {
         def getDFResult(cmd: String) = {
-          val res = Seq("ssh", "-o", "StrictHostKeyChecking=no", "-i", conf.pemFile, s"root@$address", cmd).!!
+          val res = Seq("ssh", "-o", "StrictHostKeyChecking=no", "-i", conf.pem, s"root@$address", cmd).!!
           res.split("\n").tail.map(_.split("\\s+").takeRight(2)).map(arr => arr(1) -> arr(0))
         }
         val usageStr = (getDFResult("df -i") zip getDFResult("df")).map {
@@ -203,7 +213,7 @@ object SbtSparkPlugin extends AutoPlugin {
 
       println("Checking master...")
 
-      masterAddressOpt(conf.clusterName) match {
+      masterAddressOpt(conf) match {
         case None =>
           println("\u001B[31mno master found.\u001B[0m")
         case Some(masterAddress) =>
@@ -213,7 +223,7 @@ object SbtSparkPlugin extends AutoPlugin {
 
       println("Checking slaves...")
 
-      val addresses = slaveAddresses(conf.clusterName)
+      val addresses = slaveAddresses(conf)
 
       if (addresses.isEmpty) {
         println("\u001B[31mno slave found.\u001B[0m")
@@ -231,12 +241,12 @@ object SbtSparkPlugin extends AutoPlugin {
 
       val conf = sparkConf.value
 
-      masterAddressOpt(conf.clusterName) match {
+      masterAddressOpt(conf) match {
         case None =>
           println("\u001B[31mno master found.\u001B[0m")
         case Some(address) =>
           val jar = assembly.value
-          val uploadJarCmd = Seq("rsync", "--progress", "-ve", "ssh -o StrictHostKeyChecking=no -i " + conf.pemFile, jar.getAbsolutePath, s"root@$address:~/job.jar")
+          val uploadJarCmd = Seq("rsync", "--progress", "-ve", "ssh -o StrictHostKeyChecking=no -i " + conf.pem, jar.getAbsolutePath, s"root@$address:~/job.jar")
           println(uploadJarCmd.mkString(" "))
           uploadJarCmd.!
 
@@ -255,7 +265,7 @@ object SbtSparkPlugin extends AutoPlugin {
 
           val sparkSubmitCmdStr = sparkSubmitCmd.mkString(" ")
 
-          val triggerCmd = Seq("ssh", "-i", conf.pemFile, s"root@$address", sparkSubmitCmdStr)
+          val triggerCmd = Seq("ssh", "-i", conf.pem, s"root@$address", sparkSubmitCmdStr)
           println(triggerCmd.mkString(" "))
           triggerCmd.!
       }
