@@ -39,6 +39,7 @@ object SbtSparkPlugin extends AutoPlugin {
     lazy val sparkLoginMaster = taskKey[Unit]("Login master with ssh.")
     lazy val sparkShowSpaceUsage = taskKey[Unit]("Show space usage for all the instances.")
 
+    lazy val sparkUploadJar = taskKey[Unit]("Upload job jar to master.")
     lazy val sparkSubmitJob = inputKey[Unit]("Upload and run the job directly.")
 
     lazy val sparkRemoveS3Dir = inputKey[Unit]("Remove the s3 directory include _$folder$ postfix file.")
@@ -56,6 +57,7 @@ object SbtSparkPlugin extends AutoPlugin {
     slaveType: String,
     numOfSlaves: Int,
     mainClass: String,
+    appName: Option[String],
     sparkVersion: Option[String],
     driverMemory: Option[String],
     executorMemory: Option[String],
@@ -81,11 +83,19 @@ object SbtSparkPlugin extends AutoPlugin {
   def getInstanceAddresses(clusterNamePostfix: String, conf: SparkConf) = {
     val jsonStr = Seq("aws", "ec2", "describe-instances").!!
     val json = Json.parse(jsonStr)
-    (json \\ "Instances").flatMap(_.as[Seq[JsObject]])
-      .filter(j => (j \ "SecurityGroups" \\ "GroupName").flatMap(_.asOpt[String]).contains(conf.clusterName + clusterNamePostfix))
+    (json \\ "Instances").map(_.as[Seq[JsObject]].head)
+      .filter {
+        instance =>
+          (instance \ "State" \ "Name").as[String] == "running" &&
+            (instance \ "SecurityGroups" \\ "GroupName").flatMap(_.asOpt[String]).contains(conf.clusterName + clusterNamePostfix)
+      }
       .flatMap {
-        j =>
-          if (conf.usePrivateIpsRaw.getOrElse(false)) (j \ "PrivateIpAddress").asOpt[String] else (j \ "PublicIpAddress").asOpt[String]
+        instance =>
+          if (conf.usePrivateIpsRaw.getOrElse(false)) {
+            (instance \ "PrivateIpAddress").asOpt[String]
+          } else {
+            (instance \ "PublicIpAddress").asOpt[String]
+          }
       }
   }
 
@@ -106,6 +116,7 @@ object SbtSparkPlugin extends AutoPlugin {
         (json \ "slave-type").as[String],
         (json \ "num-of-slaves").as[Int],
         (json \ "main-class").as[String],
+        (json \ "app-name").asOpt[String],
         (json \ "spark-version").asOpt[String],
         (json \ "driver-memory").asOpt[String],
         (json \ "executor-memory").asOpt[String],
@@ -234,41 +245,49 @@ object SbtSparkPlugin extends AutoPlugin {
             println(getSpaceUsage(address))
         }
       }
-
     },
-    sparkSubmitJob := {
-      println("\u001B[31mWARN: You're submitting job directly, please make sure you have a stable network connection.\u001B[0m")
-
+    sparkUploadJar := {
       val conf = sparkConf.value
 
       masterAddressOpt(conf) match {
         case None =>
-          println("\u001B[31mno master found.\u001B[0m")
+          sys.error("\u001B[31mno master found.\u001B[0m")
         case Some(address) =>
           val jar = assembly.value
           val uploadJarCmd = Seq("rsync", "--progress", "-ve", "ssh -o StrictHostKeyChecking=no -i " + conf.pem, jar.getAbsolutePath, s"root@$address:~/job.jar")
           println(uploadJarCmd.mkString(" "))
           uploadJarCmd.!
-
-          val jobArgs = spaceDelimited().parsed
-
-          val sparkSubmitCmdBase = Seq(
-            "./spark/bin/spark-submit",
-            "--class", conf.mainClass,
-            "--master", s"spark://$address:7077")
-
-          val sparkSubmitCmdOptional = Seq(
-            conf.driverMemory.map(m => Seq("--driver-memory", m)),
-            conf.executorMemory.map(m => Seq("--executor-memory", m))).flatten.flatten
-
-          val sparkSubmitCmd = sparkSubmitCmdBase ++ sparkSubmitCmdOptional ++ Seq("job.jar") ++ jobArgs
-
-          val sparkSubmitCmdStr = sparkSubmitCmd.mkString(" ")
-
-          val triggerCmd = Seq("ssh", "-i", conf.pem, s"root@$address", sparkSubmitCmdStr)
-          println(triggerCmd.mkString(" "))
-          triggerCmd.!
+          println(s"Jar uploaded, you can login master (with sparkLoginMaster) and submit the job by yourself.")
       }
+    },
+    sparkSubmitJob := {
+      println("\u001B[31mWARN: You're submitting job directly, please make sure you have a stable network connection.\u001B[0m")
+
+      sparkUploadJar.value
+
+      val conf = sparkConf.value
+
+      val address = masterAddressOpt(conf).get
+
+      val jobArgs = spaceDelimited().parsed
+
+      val sparkSubmitCmdBase = Seq(
+        "./spark/bin/spark-submit",
+        "--class", conf.mainClass,
+        "--master", s"spark://$address:7077")
+
+      val sparkSubmitCmdOptional = Seq(
+        conf.appName.map(n => Seq("--name", n)),
+        conf.driverMemory.map(m => Seq("--driver-memory", m)),
+        conf.executorMemory.map(m => Seq("--executor-memory", m))).flatten.flatten
+
+      val sparkSubmitCmd = sparkSubmitCmdBase ++ sparkSubmitCmdOptional ++ Seq("job.jar") ++ jobArgs
+
+      val sparkSubmitCmdStr = sparkSubmitCmd.mkString(" ")
+
+      val triggerCmd = Seq("ssh", "-i", conf.pem, s"root@$address", sparkSubmitCmdStr)
+      println(triggerCmd.mkString(" "))
+      triggerCmd.!
     },
     sparkRemoveS3Dir := {
       val args = spaceDelimited().parsed
