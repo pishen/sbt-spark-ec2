@@ -8,7 +8,7 @@
 * In your sbt project, create `project/plugins.sbt`:
 
 ```
-addSbtPlugin("net.pishen" %% "sbt-spark-ec2" % "0.5.0")
+addSbtPlugin("net.pishen" % "sbt-spark-ec2" % "0.5.0")
 ```
 
 * Create `spark-conf.json`:
