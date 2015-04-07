@@ -4,7 +4,7 @@ lazy val root = (project in file(".")).settings(
   sbtPlugin := true,
   
   name := "sbt-spark-ec2",
-  version := "0.5.0",
+  version := "0.5.1",
   organization := "net.pishen",
 
   scalaVersion := "2.10.5",
