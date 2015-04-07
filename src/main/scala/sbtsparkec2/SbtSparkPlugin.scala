@@ -125,6 +125,7 @@ object SbtSparkPlugin extends AutoPlugin {
         (json \ "use-private-ips").asOpt[Boolean])
     },
     sparkEc2Dir := {
+      IO.createDirectory(target.value)
       val ec2Dir = target.value / "ec2"
       IO.delete(ec2Dir)
       val gzFile = target.value / "ec2.tar.gz"
