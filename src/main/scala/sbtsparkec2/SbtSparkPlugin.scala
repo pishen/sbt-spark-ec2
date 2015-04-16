@@ -94,7 +94,7 @@ object SbtSparkPlugin extends AutoPlugin {
           if (conf.usePrivateIpsRaw.getOrElse(false)) {
             (instance \ "PrivateIpAddress").asOpt[String]
           } else {
-            (instance \ "PublicIpAddress").asOpt[String]
+            (instance \ "PublicDnsName").asOpt[String]
           }
       }
   }
