@@ -22,7 +22,7 @@ addSbtPlugin("net.pishen" % "sbt-spark-ec2" % "0.5.2")
   "master-type": "m3.medium",
   "slave-type": "m3.medium",
   "num-of-slaves": 1,
-  "main-class": "core.Main"
+  "main-class": "mypackage.Main"
 }
 ```
   Below is a more complex example of `spark-conf.json`:
@@ -36,7 +36,7 @@ addSbtPlugin("net.pishen" % "sbt-spark-ec2" % "0.5.2")
   "master-type": "m3.medium",
   "slave-type": "m3.medium",
   "num-of-slaves": 1,
-  "main-class": "core.Main",
+  "main-class": "mypackage.Main",
   "app-name": "my-spark-job",
   "spark-version": "1.3.0",
   "driver-memory": "1G",
