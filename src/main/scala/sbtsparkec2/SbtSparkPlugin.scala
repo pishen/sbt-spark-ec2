@@ -83,7 +83,7 @@ object SbtSparkPlugin extends AutoPlugin {
   def getInstanceAddresses(clusterNamePostfix: String, conf: SparkConf) = {
     val jsonStr = Seq("aws", "ec2", "describe-instances").!!
     val json = Json.parse(jsonStr)
-    (json \\ "Instances").map(_.as[Seq[JsObject]].head)
+    (json \\ "Instances").flatMap(_.as[Seq[JsObject]])
       .filter {
         instance =>
           (instance \ "State" \ "Name").as[String] == "running" &&
@@ -94,7 +94,7 @@ object SbtSparkPlugin extends AutoPlugin {
           if (conf.usePrivateIpsRaw.getOrElse(false)) {
             (instance \ "PrivateIpAddress").asOpt[String]
           } else {
-            (instance \ "PublicIpAddress").asOpt[String]
+            (instance \ "PublicDnsName").asOpt[String]
           }
       }
   }
