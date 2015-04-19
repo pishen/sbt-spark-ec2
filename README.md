@@ -8,7 +8,7 @@
 * In your sbt project, create `project/plugins.sbt`:
 
 ```
-addSbtPlugin("net.pishen" % "sbt-spark-ec2" % "0.5.1")
+addSbtPlugin("net.pishen" % "sbt-spark-ec2" % "0.5.2")
 ```
 
 * Create `spark-conf.json`:
@@ -39,6 +39,7 @@ addSbtPlugin("net.pishen" % "sbt-spark-ec2" % "0.5.1")
   "main-class": "core.Main",
   "app-name": "my-spark-job",
   "spark-version": "1.3.0",
+  "driver-memory": "1G",
   "executor-memory": "1G",
   "vpc-id": "vpc-xxxxxxxx",
   "subnet-id": "subnet-xxxxxxxx",
