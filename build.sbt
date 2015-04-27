@@ -4,13 +4,18 @@ lazy val root = (project in file(".")).settings(
   sbtPlugin := true,
   
   name := "sbt-spark-ec2",
-  version := "0.5.1",
+  version := "0.6.0",
   organization := "net.pishen",
 
   scalaVersion := "2.10.5",
   
   addSbtPlugin("com.eed3si9n" % "sbt-assembly" % "0.13.0"),
-  libraryDependencies += "com.typesafe.play" %% "play-json" % "2.4.0-M2",
+  libraryDependencies ++= Seq(
+    "net.ceedubs"        %% "ficus"            % "1.0.1",
+    "com.github.seratch" %% "awscala"          % "0.5.2" excludeAll(ExclusionRule(organization = "com.amazonaws")),
+    "com.amazonaws"      %  "aws-java-sdk-s3"  % "1.9.31",
+    "com.amazonaws"      %  "aws-java-sdk-ec2" % "1.9.31"
+  ),
   
   publishMavenStyle := false,
   bintrayPublishSettings,

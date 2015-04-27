@@ -21,7 +21,13 @@ import sbtassembly.AssemblyKeys._
 import scala.io.Source
 import java.io.File
 import java.nio.file._
-import play.api.libs.json._
+import net.ceedubs.ficus.Ficus._
+import com.typesafe.config.ConfigFactory
+import awscala.ec2.EC2
+import awscala.Region0
+import awscala.s3.S3
+import awscala.s3.Bucket
+import com.amazonaws.services.s3.model.DeleteObjectsRequest
 
 object SbtSparkPlugin extends AutoPlugin {
 
@@ -81,48 +87,44 @@ object SbtSparkPlugin extends AutoPlugin {
   def slaveAddresses(conf: SparkConf) = getInstanceAddresses("-slaves", conf)
 
   def getInstanceAddresses(clusterNamePostfix: String, conf: SparkConf) = {
-    val jsonStr = Seq("aws", "ec2", "describe-instances").!!
-    val json = Json.parse(jsonStr)
-    (json \\ "Instances").flatMap(_.as[Seq[JsObject]])
-      .filter {
-        instance =>
-          (instance \ "State" \ "Name").as[String] == "running" &&
-            (instance \ "SecurityGroups" \\ "GroupName").flatMap(_.asOpt[String]).contains(conf.clusterName + clusterNamePostfix)
-      }
+    EC2.at(Region0(conf.region))
+      .instances
+      .filter(_.state.getName == "running")
+      .filter(_.securityGroups.exists(_.getGroupName == conf.clusterName + clusterNamePostfix))
       .flatMap {
         instance =>
           if (conf.usePrivateIpsRaw.getOrElse(false)) {
-            (instance \ "PrivateIpAddress").asOpt[String]
+            Some(instance.privateIpAddress).filter(_ != "")
           } else {
-            (instance \ "PublicDnsName").asOpt[String]
+            Some(instance.publicDnsName).filter(_ != "")
           }
       }
   }
 
   override lazy val projectSettings = Seq(
     sparkConf := {
-      val json = Json.parse(Source.fromFile(baseDirectory.value / "spark-conf.json").mkString)
+      val config = ConfigFactory.parseFile(new File("sbt-spark-ec2.conf"))
 
-      val pemFile = new File((json \ "pem").as[String])
+      val pemFile = new File(config.as[String]("pem"))
       assert(pemFile.exists(), "I can't find your pem file at " + pemFile.getAbsolutePath)
 
       SparkConf(
-        (json \ "cluster-name").as[String],
-        (json \ "keypair").as[String],
+        config.as[String]("cluster-name"),
+        config.as[String]("keypair"),
         pemFile.getAbsolutePath,
-        (json \ "region").as[String],
-        (json \ "zone").asOpt[String],
-        (json \ "master-type").as[String],
-        (json \ "slave-type").as[String],
-        (json \ "num-of-slaves").as[Int],
-        (json \ "main-class").as[String],
-        (json \ "app-name").asOpt[String],
-        (json \ "spark-version").asOpt[String],
-        (json \ "driver-memory").asOpt[String],
-        (json \ "executor-memory").asOpt[String],
-        (json \ "vpc-id").asOpt[String],
-        (json \ "subnet-id").asOpt[String],
-        (json \ "use-private-ips").asOpt[Boolean])
+        config.as[String]("region"),
+        config.as[Option[String]]("zone"),
+        config.as[String]("master-type"),
+        config.as[String]("slave-type"),
+        config.as[Int]("num-of-slaves"),
+        config.as[String]("main-class"),
+        config.as[Option[String]]("app-name"),
+        config.as[Option[String]]("spark-version"),
+        config.as[Option[String]]("driver-memory"),
+        config.as[Option[String]]("executor-memory"),
+        config.as[Option[String]]("vpc-id"),
+        config.as[Option[String]]("subnet-id"),
+        config.as[Option[Boolean]]("use-private-ips"))
     },
     sparkEc2Dir := {
       IO.createDirectory(target.value)
@@ -293,9 +295,24 @@ object SbtSparkPlugin extends AutoPlugin {
     sparkRemoveS3Dir := {
       val args = spaceDelimited().parsed
       require(args.length == 1, "Please give the directory name.")
-      val dir = args.head
-      val dirWithoutEndSlash = if (dir.endsWith("/")) dir.init else dir
-      Seq("aws", "s3", "rm", dirWithoutEndSlash, "--recursive").!
-      Seq("aws", "s3", "rm", dirWithoutEndSlash + "_$folder$").!
+      val path = args.head
+      require(path.startsWith("s3://"), "Path should start with s3://")
+      val bucket = Bucket(path.drop(5).takeWhile(_ != '/'))
+      val dirPrefix = {
+        val raw = path.drop(5).dropWhile(_ != '/').tail
+        if (raw.endsWith("/")) raw else raw + "/"
+      }
+
+      val s3 = S3()
+      s3.keys(bucket, dirPrefix).grouped(1000).foreach {
+        keys =>
+          val res = s3.deleteObjects(new DeleteObjectsRequest(bucket.getName).withKeys(keys: _*))
+          println(res.getDeletedObjects.size() + " objects deleted.")
+      }
+      s3.get(bucket, dirPrefix.init + "_$folder$").foreach {
+        obj =>
+          s3.deleteObject(obj)
+          println(obj.getKey + " deleted.")
+      }
     })
 }

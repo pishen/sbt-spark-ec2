@@ -40,7 +40,7 @@ from datetime import datetime
 from optparse import OptionParser
 from sys import stderr
 
-SPARK_EC2_VERSION = "1.3.0"
+SPARK_EC2_VERSION = "1.3.1"
 SPARK_EC2_DIR = os.path.dirname(os.path.realpath(__file__))
 
 VALID_SPARK_VERSIONS = set([
@@ -58,6 +58,7 @@ VALID_SPARK_VERSIONS = set([
     "1.2.0",
     "1.2.1",
     "1.3.0",
+    "1.3.1",
 ])
 
 DEFAULT_SPARK_VERSION = SPARK_EC2_VERSION
@@ -692,7 +693,6 @@ def is_ssh_available(host, opts, print_ssh_output=True):
     """
     Check if SSH is available on a host.
     """
-
     s = subprocess.Popen(
         ssh_command(opts) + ['-t', '-t', '-o', 'ConnectTimeout=3',
                              '%s@%s' % (opts.user, host), stringify_command('true')],
