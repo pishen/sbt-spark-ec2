@@ -1,50 +1,41 @@
 # sbt-spark-ec2
 * A wrapper of [spark-ec2](http://spark.apache.org/docs/latest/ec2-scripts.html) that can be plugged into sbt and let sbt deploy spark cluster and run spark jobs easily on Amazon EC2.
-* Currently supports to Spark 1.3.0
+* Currently supports to Spark 1.3.1
 
 ## How to use this plugin
-* Install [AWS CLI](http://aws.amazon.com/cli/): `pip install awscli` (require 1.6.2+)
 * Set the environment variables `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` for AWS.
 * In your sbt project, create `project/plugins.sbt`:
 
 ```
-addSbtPlugin("net.pishen" % "sbt-spark-ec2" % "0.5.2")
+addSbtPlugin("net.pishen" % "sbt-spark-ec2" % "0.6.0")
 ```
 
-* Create `spark-conf.json`:
+* Create `sbt-spark-ec2.conf`:
 
 ```
-{
-  "cluster-name": "pishen-spark",
-  "keypair": "pishen",
-  "pem": "/home/pishen/.ssh/pishen.pem",
-  "region": "us-west-2",
-  "master-type": "m3.medium",
-  "slave-type": "m3.medium",
-  "num-of-slaves": 1,
-  "main-class": "mypackage.Main"
-}
-```
-  Below is a more complex example of `spark-conf.json`:
-```
-{
-  "cluster-name": "pishen-spark",
-  "keypair": "pishen",
-  "pem": "/home/pishen/.ssh/pishen.pem",
-  "region": "us-west-2",
-  "zone": "us-west-2b",
-  "master-type": "m3.medium",
-  "slave-type": "m3.medium",
-  "num-of-slaves": 1,
-  "main-class": "mypackage.Main",
-  "app-name": "my-spark-job",
-  "spark-version": "1.3.0",
-  "driver-memory": "1G",
-  "executor-memory": "1G",
-  "vpc-id": "vpc-xxxxxxxx",
-  "subnet-id": "subnet-xxxxxxxx",
-  "use-private-ips": true
-}
+cluster-name = "pishen-spark"
+
+keypair = "pishen"
+pem = "/home/pishen/.ssh/pishen.pem"
+
+region = "us-west-2"
+# zone is optional
+zone = "us-west-2a"
+
+master-type = "m3.medium"
+slave-type = "m3.medium"
+num-of-slaves = 1
+
+main-class = "mypackage.Main"
+
+# optional configurations
+app-name = "my-spark-job"
+spark-version = "1.3.1"
+driver-memory = "1G"
+executor-memory = "1G"
+vpc-id = "vpc-xxxxxxxx"
+subnet-id = "subnet-xxxxxxxx"
+use-private-ips = true
 ```
 * Create `build.sbt` (Here we give a simple example):
 ```
@@ -53,7 +44,7 @@ lazy val root = (project in file(".")).settings(
     version := "0.1",
     scalaVersion := "2.10.5",
     libraryDependencies ++= Seq(
-      "org.apache.spark" %% "spark-core" % "1.3.0" % "provided"
+      "org.apache.spark" %% "spark-core" % "1.3.1" % "provided"
     )
   )
 ```
