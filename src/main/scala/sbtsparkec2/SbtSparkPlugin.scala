@@ -28,6 +28,8 @@ import awscala.Region0
 import awscala.s3.S3
 import awscala.s3.Bucket
 import com.amazonaws.services.s3.model.DeleteObjectsRequest
+import com.amazonaws.services.ec2.model.RevokeSecurityGroupIngressRequest
+import scala.collection.JavaConverters._
 
 object SbtSparkPlugin extends AutoPlugin {
 
@@ -49,6 +51,8 @@ object SbtSparkPlugin extends AutoPlugin {
     lazy val sparkSubmitJob = inputKey[Unit]("Upload and run the job directly.")
 
     lazy val sparkRemoveS3Dir = inputKey[Unit]("Remove the s3 directory include _$folder$ postfix file.")
+
+    lazy val sparkDeleteSecurityGroups = taskKey[Unit]("Delete security groups.")
   }
   import autoImport._
   override def trigger = allRequirements
@@ -313,6 +317,23 @@ object SbtSparkPlugin extends AutoPlugin {
         obj =>
           s3.deleteObject(obj)
           println(obj.getKey + " deleted.")
+      }
+    },
+    sparkDeleteSecurityGroups := {
+      val conf = sparkConf.value
+
+      val targetGroupNames = Set(conf.clusterName + "-master", conf.clusterName + "-slaves")
+      val ec2 = EC2.at(Region0(conf.region))
+      val targetGroups = ec2.securityGroups.filter(targetGroupNames contains _.groupName)
+      targetGroups.foreach {
+        group =>
+          println("revoke ingress for " + group.groupName)
+          ec2.revokeSecurityGroupIngress(new RevokeSecurityGroupIngressRequest(group.groupName, group.getIpPermissions))
+      }
+      targetGroups.foreach {
+        group =>
+          println("delete group " + group.groupName)
+          ec2.deleteSecurityGroup(group.groupName)
       }
     })
 }
