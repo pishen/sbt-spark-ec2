@@ -288,7 +288,7 @@ object SbtSparkPlugin extends AutoPlugin {
 
       val sparkSubmitCmdStr = sparkSubmitCmd.mkString(" ")
 
-      val triggerCmd = Seq("ssh", "-i", conf.pem, s"root@$address", sparkSubmitCmdStr)
+      val triggerCmd = Seq("ssh", "-i", conf.pem, "-tt", s"root@$address", sparkSubmitCmdStr)
       println(triggerCmd.mkString(" "))
       triggerCmd.!
     },
