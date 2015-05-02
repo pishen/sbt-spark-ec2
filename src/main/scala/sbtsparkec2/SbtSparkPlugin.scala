@@ -14,23 +14,29 @@
 
 package sbtsparkec2
 
-import sbt._
-import sbt.Def.spaceDelimited
-import Keys._
-import sbtassembly.AssemblyKeys._
-import scala.io.Source
 import java.io.File
-import java.nio.file._
-import net.ceedubs.ficus.Ficus._
-import com.typesafe.config.ConfigFactory
-import awscala.ec2.EC2
-import awscala.Region0
-import awscala.s3.S3
-import awscala.s3.Bucket
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+
 import com.amazonaws.services.s3.model.DeleteObjectsRequest
-import com.amazonaws.services.ec2.model.RevokeSecurityGroupIngressRequest
-import scala.collection.JavaConverters._
-import com.amazonaws.services.ec2.model.DeleteSecurityGroupRequest
+import com.typesafe.config.ConfigFactory
+
+import awscala.Region0
+import awscala.ec2.EC2
+import awscala.s3.Bucket
+import awscala.s3.S3
+import net.ceedubs.ficus.Ficus._
+import sbt.AutoPlugin
+import sbt.Def.spaceDelimited
+import sbt.IO
+import sbt.Keys.target
+import sbt.inputKey
+import sbt.parserToInput
+import sbt.richFile
+import sbt.settingKey
+import sbt.stringSeqToProcess
+import sbt.taskKey
+import sbtassembly.AssemblyKeys._
 
 object SbtSparkPlugin extends AutoPlugin {
 
@@ -74,8 +80,10 @@ object SbtSparkPlugin extends AutoPlugin {
     executorMemory: Option[String],
     vpcId: Option[String],
     subnetId: Option[String],
-    usePrivateIpsRaw: Option[Boolean]) {
+    usePrivateIpsRaw: Option[Boolean],
+    deleteGroupsRaw: Option[Boolean]) {
     val usePrivateIps = if (usePrivateIpsRaw.getOrElse(false)) Some("--private-ips") else None
+    val deleteGroups = if (deleteGroupsRaw.getOrElse(false)) Some("--delete-groups") else None
   }
 
   def runSparkEc2(args: Seq[String], targetDir: File) = {
@@ -129,7 +137,8 @@ object SbtSparkPlugin extends AutoPlugin {
         config.as[Option[String]]("executor-memory"),
         config.as[Option[String]]("vpc-id"),
         config.as[Option[String]]("subnet-id"),
-        config.as[Option[Boolean]]("use-private-ips"))
+        config.as[Option[Boolean]]("use-private-ips"),
+        config.as[Option[Boolean]]("delete-groups"))
     },
     sparkEc2Dir := {
       IO.createDirectory(target.value)
@@ -168,7 +177,9 @@ object SbtSparkPlugin extends AutoPlugin {
 
       runSparkEc2(Seq(
         "-r", conf.region,
-        "destroy", conf.clusterName) ++ conf.usePrivateIps, target.value)
+        "destroy", conf.clusterName)
+        ++ conf.usePrivateIps
+        ++ conf.deleteGroups, target.value)
     },
     sparkStartCluster := {
       val conf = sparkConf.value
@@ -318,28 +329,6 @@ object SbtSparkPlugin extends AutoPlugin {
         obj =>
           s3.deleteObject(obj)
           println(obj.getKey + " deleted.")
-      }
-    },
-    sparkDeleteSecurityGroups := {
-      val conf = sparkConf.value
-
-      val targetGroupNames = Set(conf.clusterName + "-master", conf.clusterName + "-slaves")
-      val ec2 = EC2.at(Region0(conf.region))
-      val targetGroups = ec2.securityGroups.filter(targetGroupNames contains _.groupName)
-      targetGroups.foreach {
-        group =>
-          println("revoke ingress for " + group.groupName)
-          ec2.revokeSecurityGroupIngress(
-            new RevokeSecurityGroupIngressRequest()
-              .withGroupId(group.groupId)
-              .withIpPermissions(group.getIpPermissions))
-      }
-      targetGroups.foreach {
-        group =>
-          println("delete group " + group.groupName)
-          ec2.deleteSecurityGroup(
-            new DeleteSecurityGroupRequest()
-              .withGroupId(group.groupId))
       }
     })
 }

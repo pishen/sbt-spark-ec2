@@ -7,7 +7,7 @@
 * In your sbt project, create `project/plugins.sbt`:
 
 ```
-addSbtPlugin("net.pishen" % "sbt-spark-ec2" % "0.6.0")
+addSbtPlugin("net.pishen" % "sbt-spark-ec2" % "0.7.0")
 ```
 
 * Create `sbt-spark-ec2.conf`:
@@ -36,6 +36,8 @@ executor-memory = "1G"
 vpc-id = "vpc-xxxxxxxx"
 subnet-id = "subnet-xxxxxxxx"
 use-private-ips = true
+# delete the security groups when destroying cluster (optional)
+delete-groups = true
 ```
 * Create `build.sbt` (Here we give a simple example):
 ```
