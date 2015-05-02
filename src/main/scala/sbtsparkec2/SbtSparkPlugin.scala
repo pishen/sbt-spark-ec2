@@ -58,8 +58,6 @@ object SbtSparkPlugin extends AutoPlugin {
     lazy val sparkSubmitJob = inputKey[Unit]("Upload and run the job directly.")
 
     lazy val sparkRemoveS3Dir = inputKey[Unit]("Remove the s3 directory include _$folder$ postfix file.")
-
-    lazy val sparkDeleteSecurityGroups = taskKey[Unit]("Delete security groups.")
   }
   import autoImport._
   override def trigger = allRequirements
