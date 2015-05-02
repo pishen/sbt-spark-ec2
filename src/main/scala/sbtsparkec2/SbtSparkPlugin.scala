@@ -30,6 +30,7 @@ import awscala.s3.Bucket
 import com.amazonaws.services.s3.model.DeleteObjectsRequest
 import com.amazonaws.services.ec2.model.RevokeSecurityGroupIngressRequest
 import scala.collection.JavaConverters._
+import com.amazonaws.services.ec2.model.DeleteSecurityGroupRequest
 
 object SbtSparkPlugin extends AutoPlugin {
 
@@ -328,12 +329,17 @@ object SbtSparkPlugin extends AutoPlugin {
       targetGroups.foreach {
         group =>
           println("revoke ingress for " + group.groupName)
-          ec2.revokeSecurityGroupIngress(new RevokeSecurityGroupIngressRequest(group.groupName, group.getIpPermissions))
+          ec2.revokeSecurityGroupIngress(
+            new RevokeSecurityGroupIngressRequest()
+              .withGroupId(group.groupId)
+              .withIpPermissions(group.getIpPermissions))
       }
       targetGroups.foreach {
         group =>
           println("delete group " + group.groupName)
-          ec2.deleteSecurityGroup(group.groupName)
+          ec2.deleteSecurityGroup(
+            new DeleteSecurityGroupRequest()
+              .withGroupId(group.groupId))
       }
     })
 }
