@@ -114,7 +114,7 @@ object SbtSparkPlugin extends AutoPlugin {
 
   override lazy val projectSettings = Seq(
     sparkConf := {
-      val config = ConfigFactory.parseFile(new File("sbt-spark-ec2.conf"))
+      val config = ConfigFactory.parseFile(new File("sbt-spark-ec2.conf")).resolve()
 
       val pemFile = new File(config.as[String]("pem"))
       assert(pemFile.exists(), "I can't find your pem file at " + pemFile.getAbsolutePath)
