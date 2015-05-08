@@ -89,8 +89,7 @@ object SbtSparkPlugin extends AutoPlugin {
 
     val cmd = Seq(ec2Dir.getAbsolutePath + "/spark-ec2") ++ args
     println(cmd.mkString(" "))
-    val res = cmd.!<
-    if (res != 0) sys.error("spark-ec2 return " + res) else res
+    if(cmd.!< != 0) sys.error("spark-ec2 error")
   }
 
   def masterAddressOpt(conf: SparkConf) = getInstanceAddresses("-master", conf).headOption
@@ -273,7 +272,7 @@ object SbtSparkPlugin extends AutoPlugin {
           val jar = assembly.value
           val uploadJarCmd = Seq("rsync", "--progress", "-ve", "ssh -o StrictHostKeyChecking=no -i " + conf.pem, jar.getAbsolutePath, s"root@$address:~/job.jar")
           println(uploadJarCmd.mkString(" "))
-          uploadJarCmd.!
+          if(uploadJarCmd.! != 0) sys.error("jar upload error")
           println(s"Jar uploaded, you can login master (with sparkLoginMaster) and submit the job by yourself.")
       }
     },
@@ -304,7 +303,7 @@ object SbtSparkPlugin extends AutoPlugin {
 
       val triggerCmd = Seq("ssh", "-i", conf.pem, "-tt", s"root@$address", sparkSubmitCmdStr)
       println(triggerCmd.mkString(" "))
-      triggerCmd.!
+      if(triggerCmd.! != 0) sys.error("submit job error")
     },
     sparkRemoveS3Dir := {
       val args = spaceDelimited().parsed
